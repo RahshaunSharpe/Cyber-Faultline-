@@ -95,6 +95,9 @@ param(
     [switch]$ExportJson,
 
     [Parameter()]
+    [switch]$ExportCsv,
+
+    [Parameter()]
     [switch]$LocalScan
 )
 
@@ -244,6 +247,8 @@ Begin {
             ScanStatus   = 'Unknown'
             OverallRisk  = 'Unknown'
             RiskScore    = 0
+            HealthScore  = 100
+            HealthGrade  = 'A'
             Modules      = [System.Collections.Generic.List[PSCustomObject]]::new()
         }
 
@@ -467,10 +472,18 @@ Begin {
         $allFindings = @()
         foreach ($mod in $result.Modules) { $allFindings += $mod.Findings }
 
-        $scoreData          = Get-RiskScore -Findings $allFindings -Config $Config
-        $result.RiskScore   = $scoreData.Score
-        $result.OverallRisk = $scoreData.Risk
-        $result.ScanStatus  = 'Complete'
+        $scoreData           = Get-RiskScore -Findings $allFindings -Config $Config
+        $result.RiskScore    = $scoreData.Score
+        $result.OverallRisk  = $scoreData.Risk
+        $result.HealthScore  = [math]::Max(0, 100 - $scoreData.Score)
+        $result.HealthGrade  = switch ($result.HealthScore) {
+            { $_ -ge 90 } { 'A'; break }
+            { $_ -ge 75 } { 'B'; break }
+            { $_ -ge 60 } { 'C'; break }
+            { $_ -ge 40 } { 'D'; break }
+            default        { 'F' }
+        }
+        $result.ScanStatus   = 'Complete'
 
         $scanDuration = [math]::Round(((Get-Date) - $scanStart).TotalSeconds, 1)
 
@@ -482,7 +495,7 @@ Begin {
             default    { 'Green' }
         }
 
-        Write-Host "  [✓] $Computer  - Risk: $($result.OverallRisk.ToUpper()) (Score: $($result.RiskScore)) [$scanDuration sec]" -ForegroundColor $riskColor
+        Write-Host "  [✓] $Computer  - Grade: $($result.HealthGrade) ($($result.HealthScore)/100) | Risk: $($result.OverallRisk.ToUpper()) [$scanDuration sec]" -ForegroundColor $riskColor
 
         return $result
     }
@@ -595,6 +608,8 @@ function Get-RiskScore {
                 ScanStatus   = 'Unknown'
                 OverallRisk  = 'Unknown'
                 RiskScore    = 0
+                HealthScore  = 100
+                HealthGrade  = 'A'
                 Modules      = [System.Collections.Generic.List[PSCustomObject]]::new()
             }
 
@@ -647,6 +662,14 @@ function Get-RiskScore {
             $sd = Get-RiskScore -Findings $allF -Config $Config
             $result.RiskScore   = $sd.Score
             $result.OverallRisk = $sd.Risk
+            $result.HealthScore = [math]::Max(0, 100 - $sd.Score)
+            $result.HealthGrade = switch ($result.HealthScore) {
+                { $_ -ge 90 } { 'A'; break }
+                { $_ -ge 75 } { 'B'; break }
+                { $_ -ge 60 } { 'C'; break }
+                { $_ -ge 40 } { 'D'; break }
+                default        { 'F' }
+            }
             $result.ScanStatus  = 'Complete'
             $result
         }
@@ -704,6 +727,34 @@ function Get-RiskScore {
         $jsonPath = $reportPath -replace '\.html$', '.json'
         $allResults | ConvertTo-Json -Depth 10 | Out-File $jsonPath -Encoding UTF8
         Write-Host "  [+] JSON export: $jsonPath" -ForegroundColor DarkGreen
+    }
+
+    # ── CSV Export (flattened findings — import into Excel/SIEM/ticketing) ──
+    if ($ExportCsv) {
+        $csvPath = $reportPath -replace '\.html$', '_findings.csv'
+        $csvRows = foreach ($sr in $allResults) {
+            $allF = @()
+            foreach ($mod in $sr.Modules) { if ($mod.Findings) { $allF += $mod.Findings } }
+            foreach ($f in ($allF | Where-Object { $_.Status -notin 'PASS','INFO' })) {
+                [PSCustomObject]@{
+                    Server         = $sr.ComputerName
+                    HealthGrade    = $sr.HealthGrade
+                    HealthScore    = $sr.HealthScore
+                    RiskLevel      = $sr.OverallRisk
+                    Category       = $f.Category
+                    Check          = $f.Check
+                    Status         = $f.Status
+                    Severity       = $f.Severity
+                    Description    = $f.Description
+                    Details        = $f.Details
+                    Recommendation = $f.Recommendation
+                    Reference      = $f.Reference
+                    ScanTime       = $sr.ScanTime
+                }
+            }
+        }
+        $csvRows | Export-Csv -Path $csvPath -NoTypeInformation -Encoding UTF8
+        Write-Host "  [+] CSV export: $csvPath" -ForegroundColor DarkGreen
     }
 
     # ── Final Summary ─────────────────────────────────────────────
