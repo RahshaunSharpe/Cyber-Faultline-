@@ -311,6 +311,13 @@ SCAN HYPER-V HOST (workgroup):
 SCAN DOMAIN VMs / DCs / SERVERS:
   .\Invoke-EnterpriseAssessment.ps1 -ComputerName "DC01","FS01" -CredentialUser "DOMAIN\Administrator" -OpenReport
 
+
+Scan all domain computers from AD
+    .\Invoke-EnterpriseAssessment.ps1 -DiscoverFromAD -CredentialUser "DOMAIN\Admin" -MaxParallel 10
+
+Scan from a text file list
+    Get-Content .\servers.txt | .\Invoke-EnterpriseAssessment.ps1
+
 SCAN ALL DOMAIN SERVERS AUTOMATICALLY:
   .\Invoke-EnterpriseAssessment.ps1 -DiscoverFromAD -CredentialUser "DOMAIN\Administrator" -OpenReport
 
