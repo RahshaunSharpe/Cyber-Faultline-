@@ -1,4 +1,6 @@
 # Enterprise Infrastructure Assessment Tool
+<img width="1734" height="811" alt="image" src="https://github.com/user-attachments/assets/c98dbed2-e2ab-4764-8209-03fe1d5105c8" />
+
 ### Complete Usage Guide
 
 ---
