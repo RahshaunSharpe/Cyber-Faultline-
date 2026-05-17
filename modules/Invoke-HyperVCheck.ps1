@@ -2,14 +2,18 @@ function Invoke-HyperVCheck {
     param(
         [string]$ComputerName,
         [PSCredential]$Credential,
-        [hashtable]$Config
+        [hashtable]$Config,
+        [switch]$LocalScan
     )
 
     $findings  = [System.Collections.Generic.List[PSCustomObject]]::new()
     $hvInfo    = @{ IsHyperVHost = $false }
 
-    $psParams  = @{ ComputerName = $ComputerName; ErrorAction = 'Stop' }
-    if ($Credential) { $psParams['Credential'] = $Credential }
+    $psParams  = @{ ErrorAction = 'Stop' }
+    if (-not $LocalScan) {
+        $psParams['ComputerName'] = $ComputerName
+        if ($Credential) { $psParams['Credential'] = $Credential }
+    }
 
     # ── Detect Hyper-V Role ────────────────────────────────────────
     try {

@@ -2,14 +2,18 @@
     param(
         [string]$ComputerName,
         [PSCredential]$Credential,
-        [hashtable]$Config
+        [hashtable]$Config,
+        [switch]$LocalScan
     )
 
     $findings    = [System.Collections.Generic.List[PSCustomObject]]::new()
     $hwInfo      = @{}
 
-    $cimParams = @{ ComputerName = $ComputerName; ErrorAction = 'Stop' }
-    if ($Credential) { $cimParams['Credential'] = $Credential }
+    $cimParams = @{ ErrorAction = 'Stop' }
+    if (-not $LocalScan) {
+        $cimParams['ComputerName'] = $ComputerName
+        if ($Credential) { $cimParams['Credential'] = $Credential }
+    }
 
     try {
         $cs      = Get-CimInstance -ClassName Win32_ComputerSystem   @cimParams

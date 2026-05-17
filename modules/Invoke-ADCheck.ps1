@@ -3,14 +3,18 @@
         [string]$ComputerName,
         [PSCredential]$Credential,
         [hashtable]$Config,
-        [bool]$IsDomainController = $false
+        [bool]$IsDomainController = $false,
+        [switch]$LocalScan
     )
 
     $findings = [System.Collections.Generic.List[PSCustomObject]]::new()
     $adInfo   = @{}
 
-    $psParams = @{ ComputerName = $ComputerName; ErrorAction = 'Stop' }
-    if ($Credential) { $psParams['Credential'] = $Credential }
+    $psParams = @{ ErrorAction = 'Stop' }
+    if (-not $LocalScan) {
+        $psParams['ComputerName'] = $ComputerName
+        if ($Credential) { $psParams['Credential'] = $Credential }
+    }
 
     # ── Is it even joined to a domain? ────────────────────────────
     try {

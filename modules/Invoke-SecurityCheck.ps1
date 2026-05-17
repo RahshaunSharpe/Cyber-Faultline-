@@ -2,14 +2,18 @@
     param(
         [string]$ComputerName,
         [PSCredential]$Credential,
-        [hashtable]$Config
+        [hashtable]$Config,
+        [switch]$LocalScan
     )
 
     $findings    = [System.Collections.Generic.List[PSCustomObject]]::new()
     $secInfo     = @{}
 
-    $psParams = @{ ComputerName = $ComputerName; ErrorAction = 'Stop' }
-    if ($Credential) { $psParams['Credential'] = $Credential }
+    $psParams = @{ ErrorAction = 'Stop' }
+    if (-not $LocalScan) {
+        $psParams['ComputerName'] = $ComputerName
+        if ($Credential) { $psParams['Credential'] = $Credential }
+    }
 
     try {
         $results = Invoke-Command @psParams -ScriptBlock {

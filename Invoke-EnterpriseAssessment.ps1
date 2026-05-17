@@ -92,7 +92,10 @@ param(
     [switch]$OpenReport,
 
     [Parameter()]
-    [switch]$ExportJson
+    [switch]$ExportJson,
+
+    [Parameter()]
+    [switch]$LocalScan
 )
 
 Begin {
@@ -106,6 +109,9 @@ Begin {
     Write-Host "  ║     Enterprise Infrastructure Assessment Tool  v2.0          ║" -ForegroundColor Cyan
     Write-Host "  ║     NIST SP 800-53 | CIS Controls v8 | DISA STIG            ║" -ForegroundColor DarkCyan
     Write-Host "  ╚══════════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
+    if ($LocalScan) {
+        Write-Host "  [LOCAL MODE] Running directly on this machine — WinRM not required" -ForegroundColor Green
+    }
     Write-Host ""
 
     # ── Load Config ────────────────────────────────────────────────
@@ -176,7 +182,10 @@ Begin {
 
     # ── Credentials ───────────────────────────────────────────────
     $Credential = $null
-    if ($CredentialUser) {
+    if ($LocalScan) {
+        Write-Host "  [LOCAL] No credentials needed — running as current user ($env:USERDOMAIN\$env:USERNAME)" -ForegroundColor DarkGreen
+    }
+    elseif ($CredentialUser) {
         Write-Host "  Credential required for: $CredentialUser" -ForegroundColor Yellow
         $Credential = Get-Credential -UserName $CredentialUser -Message "Enter password for remote server access"
     }
@@ -223,7 +232,8 @@ Begin {
             [string]$Computer,
             [PSCredential]$Credential,
             [hashtable]$Config,
-            [string[]]$SkipModules
+            [string[]]$SkipModules,
+            [switch]$LocalScan
         )
 
         $scanStart = Get-Date
@@ -238,36 +248,38 @@ Begin {
         }
 
         # ── Connectivity Test ──────────────────────────────────────
-        Write-Host "  [~] Testing connectivity to $Computer ..." -ForegroundColor DarkGray
-
-        $pingOK = Test-Connection -ComputerName $Computer -Count 1 -Quiet -ErrorAction SilentlyContinue
-        if (-not $pingOK) {
-            Write-Host "  [!] $Computer  - UNREACHABLE (ping failed)" -ForegroundColor Red
-            $result.ScanStatus = 'Unreachable'
-            $result.Modules.Add([PSCustomObject]@{
-                ModuleName = 'Connectivity'
-                Findings   = @([PSCustomObject]@{
-                    Category = 'Connectivity'; Check = 'Network Reachability'
-                    Status = 'ERROR'; Severity = 'Critical'
-                    Description = "$Computer is not reachable via ICMP ping"
-                    Details = 'Server may be offline, firewall blocking ICMP, or hostname is incorrect.'
-                    Recommendation = 'Verify server power state, DNS resolution, and firewall rules. Confirm hostname is correct.'
-                    Reference = ''
-                })
-            })
-            return $result
+        if ($LocalScan) {
+            Write-Host "  [~] Local scan — skipping network connectivity test" -ForegroundColor DarkGray
+            $result.IPAddress = '127.0.0.1 (local)'
         }
+        else {
+            Write-Host "  [~] Testing connectivity to $Computer ..." -ForegroundColor DarkGray
+            $pingOK = Test-Connection -ComputerName $Computer -Count 1 -Quiet -ErrorAction SilentlyContinue
+            if (-not $pingOK) {
+                Write-Host "  [!] $Computer  - UNREACHABLE (ping failed)" -ForegroundColor Red
+                $result.ScanStatus = 'Unreachable'
+                $result.Modules.Add([PSCustomObject]@{
+                    ModuleName = 'Connectivity'
+                    Findings   = @([PSCustomObject]@{
+                        Category = 'Connectivity'; Check = 'Network Reachability'
+                        Status = 'ERROR'; Severity = 'Critical'
+                        Description = "$Computer is not reachable via ICMP ping"
+                        Details = 'Server may be offline, firewall blocking ICMP, or hostname is incorrect.'
+                        Recommendation = 'Verify server power state, DNS resolution, and firewall rules. Confirm hostname is correct.'
+                        Reference = ''
+                    })
+                })
+                return $result
+            }
+            try {
+                $dnsResult = [System.Net.Dns]::GetHostAddresses($Computer) | Select-Object -First 1
+                $result.IPAddress = $dnsResult.IPAddressToString
+            } catch { $result.IPAddress = 'N/A' }
 
-        # Resolve IP
-        try {
-            $dnsResult = [System.Net.Dns]::GetHostAddresses($Computer) | Select-Object -First 1
-            $result.IPAddress = $dnsResult.IPAddressToString
-        } catch { $result.IPAddress = 'N/A' }
-
-        # Test WinRM
-        $winrmOK = Test-WSMan -ComputerName $Computer -ErrorAction SilentlyContinue
-        if (-not $winrmOK) {
-            Write-Host "  [!] $Computer  - WinRM not responding. CIM-only checks will run." -ForegroundColor Yellow
+            $winrmOK = Test-WSMan -ComputerName $Computer -ErrorAction SilentlyContinue
+            if (-not $winrmOK) {
+                Write-Host "  [!] $Computer  - WinRM not responding. CIM-only checks will run." -ForegroundColor Yellow
+            }
         }
 
         $cimParams = @{ ComputerName = $Computer; ErrorAction = 'Stop' }
@@ -280,6 +292,7 @@ Begin {
             ComputerName = $Computer
             Credential   = $Credential
             Config       = $Config
+            LocalScan    = $LocalScan
         }
 
         # ── OS Check ──────────────────────────────────────────────
@@ -516,7 +529,7 @@ End {
     if ($MaxParallel -le 1 -or $allComputers.Count -eq 1) {
         # Sequential scan
         foreach ($computer in $allComputers) {
-            $res = Invoke-ServerScan -Computer $computer -Credential $Credential -Config $Config -SkipModules $SkipModules
+            $res = Invoke-ServerScan -Computer $computer -Credential $Credential -Config $Config -SkipModules $SkipModules -LocalScan:$LocalScan
             $allResults.Add($res)
         }
     }

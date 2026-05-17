@@ -2,14 +2,18 @@
     param(
         [string]$ComputerName,
         [PSCredential]$Credential,
-        [hashtable]$Config
+        [hashtable]$Config,
+        [switch]$LocalScan
     )
 
     $findings    = [System.Collections.Generic.List[PSCustomObject]]::new()
     $storageInfo = @{ Disks = @(); Shares = @() }
 
-    $cimParams   = @{ ComputerName = $ComputerName; ErrorAction = 'Stop' }
-    if ($Credential) { $cimParams['Credential'] = $Credential }
+    $cimParams = @{ ErrorAction = 'Stop' }
+    if (-not $LocalScan) {
+        $cimParams['ComputerName'] = $ComputerName
+        if ($Credential) { $cimParams['Credential'] = $Credential }
+    }
 
     $warnPct  = $Config.Thresholds.Storage.DiskUsageWarningPct
     $highPct  = $Config.Thresholds.Storage.DiskUsageHighPct
@@ -118,8 +122,11 @@
 
     # ── Network File Shares ────────────────────────────────────────
     try {
-        $psParams = @{ ComputerName = $ComputerName; ErrorAction = 'Stop' }
-        if ($Credential) { $psParams['Credential'] = $Credential }
+        $psParams = @{ ErrorAction = 'Stop' }
+        if (-not $LocalScan) {
+            $psParams['ComputerName'] = $ComputerName
+            if ($Credential) { $psParams['Credential'] = $Credential }
+        }
 
         $shares = Invoke-Command @psParams -ScriptBlock {
             Get-SmbShare -ErrorAction SilentlyContinue |
