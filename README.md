@@ -15,7 +15,9 @@ Scans your Windows servers and produces a single HTML report that tells you:
 - Whether your servers are ready to move to cloud (Azure / AWS) or need work first
 - For Hyper-V hosts — a full inventory of every VM and whether each one is ready to migrate
 
-You run it from **one machine**. It reaches out to all your servers remotely. You never log into the servers themselves.
+Best Case Scenario 
+You run it from **one machine**. It reaches out to all your servers remotely. You never should have log into the servers themselves.
+However I understand Win-rm and other issues. So you may need log on and run a local Invocation of the script and it will be fine. 
 
 ---
 
@@ -58,10 +60,10 @@ Set-Item WSMan:\localhost\Client\TrustedHosts -Value "HYPERV-HOST01" -Force
 
 ## Running the Scanner
 
-Open **PowerShell as Administrator** on your scanner machine, then navigate to this folder:
+Open **PowerShell as Administrator** on your scanner machine, then navigate to the folder that contains the Cyber faultine Folder :
 
 ```powershell
-cd "C:\Users\ctadmin\Documents\ServerAsses"
+cd "C:\users\User\Downloads\CyberFaultline"
 ```
 
 ---
@@ -176,7 +178,7 @@ Useful if you want to feed results into another tool or keep a record:
 
 All reports save automatically to:
 ```
-C:\Users\ctadmin\Documents\ServerAsses\Reports\
+<CyberFaultlineFolder>\Reports\
 ```
 
 Each report is a single self-contained HTML file named with the date and time:
@@ -245,13 +247,13 @@ Each individual finding has its own severity label:
 ## Common Questions
 
 **Q: Do I need to be on the server to run it?**
-No. You run it from your own machine and it connects to the servers remotely.
+No. You can run it from your own machine and it connects to the servers remotely.
 
 **Q: Do I need to install anything on the servers I'm scanning?**
 No. The scanner uses built-in Windows remote management (WinRM). The only setup is enabling WinRM on each server if it isn't already on.
 
 **Q: The Hyper-V host is in a workgroup but the VMs are domain joined. Do I need two scans?**
-Yes — two scans, two reports. The host uses local admin credentials, the VMs use domain credentials. See Scenario 5 above.
+Yes — two scans, two reports. The host uses local admin credentials, the VMs use domain credentials. See Scenario 5 above. However if the HV is domain joined you can reach all pcs from it one scan is possible depending on Win-Rm on remote servers
 
 **Q: A server shows as unreachable. What do I do?**
 1. Make sure the server is powered on
