@@ -18,7 +18,13 @@ function Invoke-OSCheck {
     try {
         $os      = Get-CimInstance -ClassName Win32_OperatingSystem @cimParams
         $cs      = Get-CimInstance -ClassName Win32_ComputerSystem  @cimParams
-        $hotfixCount = (Get-CimInstance -ClassName Win32_QuickFixEngineering @cimParams | Measure-Object).Count
+        # Win32_QuickFixEngineering is extremely slow — use WU COM object instead (instant)
+        try {
+            $wuSession   = New-Object -ComObject Microsoft.Update.Session -ErrorAction Stop
+            $hotfixCount = $wuSession.CreateUpdateSearcher().GetTotalHistoryCount()
+        } catch {
+            $hotfixCount = 0
+        }
 
         $osCaption    = $os.Caption
         $osBuild      = $os.BuildNumber

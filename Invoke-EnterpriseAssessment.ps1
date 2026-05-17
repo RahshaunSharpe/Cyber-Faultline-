@@ -295,15 +295,30 @@ Begin {
             LocalScan    = $LocalScan
         }
 
+        # Helper — prints start time, runs the block, prints duration
+        function Invoke-TimedModule {
+            param([string]$Tag, [string]$Label, [scriptblock]$Action)
+            $t = Get-Date
+            Write-Host ("      [{0}] {1} ... {2}" -f $Tag, $Label, $t.ToString('HH:mm:ss')) -ForegroundColor DarkGray
+            try {
+                $res = & $Action
+                $elapsed = [math]::Round(((Get-Date) - $t).TotalSeconds, 1)
+                Write-Host ("      [{0}] done ({1}s)" -f $Tag, $elapsed) -ForegroundColor DarkGreen
+                return $res
+            } catch {
+                $elapsed = [math]::Round(((Get-Date) - $t).TotalSeconds, 1)
+                Write-Host ("      [{0}] FAILED after {1}s  - {2}" -f $Tag, $elapsed, $_) -ForegroundColor Yellow
+                throw
+            }
+        }
+
         # ── OS Check ──────────────────────────────────────────────
         if ('OS' -notin $SkipModules) {
-            Write-Host "      [OS] Operating system assessment ..." -ForegroundColor DarkGray
             try {
-                $osResult = Invoke-OSCheck @moduleParams
+                $osResult = Invoke-TimedModule 'OS' 'Operating system assessment' { Invoke-OSCheck @moduleParams }
                 $result.Modules.Add($osResult)
             }
             catch {
-                Write-Host "      [!] OS check failed: $_" -ForegroundColor Yellow
                 $result.Modules.Add([PSCustomObject]@{
                     ModuleName = 'OSCheck'; OSInfo = @{}
                     Findings = @([PSCustomObject]@{
@@ -317,13 +332,11 @@ Begin {
 
         # ── Hardware Check ────────────────────────────────────────
         if ('Hardware' -notin $SkipModules) {
-            Write-Host "      [HW] Hardware assessment ..." -ForegroundColor DarkGray
             try {
-                $hwResult = Invoke-HardwareCheck @moduleParams
+                $hwResult = Invoke-TimedModule 'HW' 'Hardware assessment' { Invoke-HardwareCheck @moduleParams }
                 $result.Modules.Add($hwResult)
             }
             catch {
-                Write-Host "      [!] Hardware check failed: $_" -ForegroundColor Yellow
                 $result.Modules.Add([PSCustomObject]@{
                     ModuleName = 'HardwareCheck'; HardwareInfo = @{}
                     Findings = @([PSCustomObject]@{
@@ -337,13 +350,11 @@ Begin {
 
         # ── Storage Check ─────────────────────────────────────────
         if ('Storage' -notin $SkipModules) {
-            Write-Host "      [ST] Storage assessment ..." -ForegroundColor DarkGray
             try {
-                $stgResult = Invoke-StorageCheck @moduleParams
+                $stgResult = Invoke-TimedModule 'ST' 'Storage assessment' { Invoke-StorageCheck @moduleParams }
                 $result.Modules.Add($stgResult)
             }
             catch {
-                Write-Host "      [!] Storage check failed: $_" -ForegroundColor Yellow
                 $result.Modules.Add([PSCustomObject]@{
                     ModuleName = 'StorageCheck'; StorageInfo = @{ Disks=@(); Shares=@() }
                     Findings = @([PSCustomObject]@{
@@ -357,13 +368,11 @@ Begin {
 
         # ── Security Check ────────────────────────────────────────
         if ('Security' -notin $SkipModules) {
-            Write-Host "      [SC] Security assessment ..." -ForegroundColor DarkGray
             try {
-                $secResult = Invoke-SecurityCheck @moduleParams
+                $secResult = Invoke-TimedModule 'SC' 'Security assessment' { Invoke-SecurityCheck @moduleParams }
                 $result.Modules.Add($secResult)
             }
             catch {
-                Write-Host "      [!] Security check failed: $_" -ForegroundColor Yellow
                 $result.Modules.Add([PSCustomObject]@{
                     ModuleName = 'SecurityCheck'; SecurityInfo = @{}
                     Findings = @([PSCustomObject]@{
@@ -377,13 +386,11 @@ Begin {
 
         # ── AD Check ──────────────────────────────────────────────
         if ('AD' -notin $SkipModules) {
-            Write-Host "      [AD] Active Directory assessment ..." -ForegroundColor DarkGray
             try {
-                $adResult = Invoke-ADCheck @moduleParams
+                $adResult = Invoke-TimedModule 'AD' 'Active Directory assessment' { Invoke-ADCheck @moduleParams }
                 $result.Modules.Add($adResult)
             }
             catch {
-                Write-Host "      [!] AD check failed: $_" -ForegroundColor Yellow
                 $result.Modules.Add([PSCustomObject]@{
                     ModuleName = 'ADCheck'; ADInfo = @{}
                     Findings = @([PSCustomObject]@{
@@ -397,13 +404,11 @@ Begin {
 
         # ── Performance Check ─────────────────────────────────────
         if ('Performance' -notin $SkipModules) {
-            Write-Host "      [PF] Performance assessment ..." -ForegroundColor DarkGray
             try {
-                $perfResult = Invoke-PerformanceCheck @moduleParams
+                $perfResult = Invoke-TimedModule 'PF' 'Performance assessment' { Invoke-PerformanceCheck @moduleParams }
                 $result.Modules.Add($perfResult)
             }
             catch {
-                Write-Host "      [!] Performance check failed: $_" -ForegroundColor Yellow
                 $result.Modules.Add([PSCustomObject]@{
                     ModuleName = 'PerformanceCheck'; PerfInfo = @{}
                     Findings = @([PSCustomObject]@{
@@ -418,9 +423,8 @@ Begin {
         # ── Hyper-V Check ─────────────────────────────────────────
         $hvResult = $null
         if ('HyperV' -notin $SkipModules) {
-            Write-Host "      [HV] Hyper-V assessment ..." -ForegroundColor DarkGray
             try {
-                $hvResult = Invoke-HyperVCheck @moduleParams
+                $hvResult = Invoke-TimedModule 'HV' 'Hyper-V assessment' { Invoke-HyperVCheck @moduleParams }
                 $result.Modules.Add($hvResult)
                 if ($hvResult.HVInfo.IsHyperVHost) {
                     Write-Host "      [HV] Hyper-V host detected: $($hvResult.HVInfo.TotalVMCount) VM(s) found" -ForegroundColor Cyan
@@ -434,7 +438,7 @@ Begin {
 
         # ── Cloud Readiness ───────────────────────────────────────
         if ('Cloud' -notin $SkipModules) {
-            Write-Host "      [CL] Cloud readiness assessment ..." -ForegroundColor DarkGray
+            Write-Host ("      [CL] Cloud readiness assessment ... {0}" -f (Get-Date).ToString('HH:mm:ss')) -ForegroundColor DarkGray
             try {
                 $osResultForCloud  = $result.Modules | Where-Object { $_.ModuleName -eq 'OSCheck' }       | Select-Object -First 1
                 $hwResultForCloud  = $result.Modules | Where-Object { $_.ModuleName -eq 'HardwareCheck' } | Select-Object -First 1

@@ -16,7 +16,7 @@
     }
 
     try {
-        $results = Invoke-Command @psParams -ScriptBlock {
+        $collectBlock = {
 
             $out = @{}
 
@@ -30,27 +30,44 @@
             }
 
             # ── Windows Defender / AV ──────────────────────────────
+            # Get-MpComputerStatus throws 0x80070002 when a third-party AV has
+            # replaced Defender — run in a job with a hard timeout so it never hangs
             try {
-                $av = Get-MpComputerStatus -ErrorAction SilentlyContinue
-                $out['DefenderStatus'] = $av | Select-Object AMServiceEnabled, AntispywareEnabled, AntivirusEnabled,
-                    RealTimeProtectionEnabled, NISEnabled, IoavProtectionEnabled,
-                    AntivirusSignatureAge, AntispywareSignatureAge, QuickScanAge, FullScanAge,
-                    AMRunningMode, AMProductVersion
+                $mpJob = Start-Job { Get-MpComputerStatus -ErrorAction SilentlyContinue }
+                $av    = $null
+                if (Wait-Job $mpJob -Timeout 3) {
+                    $av = Receive-Job $mpJob -ErrorAction SilentlyContinue
+                }
+                Remove-Job $mpJob -Force -ErrorAction SilentlyContinue
+                $out['DefenderStatus'] = if ($av) {
+                    $av | Select-Object AMServiceEnabled, AntispywareEnabled, AntivirusEnabled,
+                        RealTimeProtectionEnabled, NISEnabled, IoavProtectionEnabled,
+                        AntivirusSignatureAge, AntispywareSignatureAge, QuickScanAge, FullScanAge,
+                        AMRunningMode, AMProductVersion
+                } else { $null }
+                $out['AVError'] = if (-not $av) { 'Defender WMI provider unavailable - third-party AV may be active' } else { $null }
             } catch {
                 $out['DefenderStatus'] = $null
                 $out['AVError']        = $_.Exception.Message
             }
 
             # ── SMBv1 ──────────────────────────────────────────────
+            # Registry and SMB cmdlet are instant. Get-WindowsOptionalFeature
+            # runs DISM and can block for 60+ seconds on DCs — avoid it.
             try {
-                $smb1 = Get-WindowsOptionalFeature -Online -FeatureName SMB1Protocol -ErrorAction SilentlyContinue
-                $out['SMBv1Feature'] = $smb1.State
+                $smbConfig = Get-SmbServerConfiguration -ErrorAction SilentlyContinue
+                if ($smbConfig -ne $null) {
+                    $out['SMBv1Enabled'] = $smbConfig.EnableSMB1Protocol
+                } else {
+                    throw 'SmbServerConfiguration unavailable'
+                }
             } catch {
                 try {
                     $smb1reg = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters' -Name SMB1 -ErrorAction SilentlyContinue
-                    $out['SMBv1Reg'] = $smb1reg.SMB1
+                    # SMB1 reg value: 0 = disabled, 1 or missing = enabled
+                    $out['SMBv1Enabled'] = ($smb1reg -eq $null -or $smb1reg.SMB1 -ne 0)
                 } catch {
-                    $out['SMBv1'] = 'Unknown'
+                    $out['SMBv1Enabled'] = $null
                 }
             }
 
@@ -113,18 +130,25 @@
             }
 
             # ── Local Administrators ───────────────────────────────
+            # Get-LocalGroupMember hangs on DCs because it recursively resolves
+            # nested domain group memberships via LDAP. ADSI WinNT is instant.
             try {
-                $admins = Get-LocalGroupMember -Group 'Administrators' -ErrorAction SilentlyContinue
-                $out['LocalAdmins']      = $admins | Select-Object Name, ObjectClass, PrincipalSource
-                $out['LocalAdminCount']  = ($admins | Measure-Object).Count
+                $group       = [ADSI]"WinNT://./Administrators,group"
+                $members     = @($group.psbase.Invoke('Members')) | ForEach-Object {
+                    try { $_.GetType().InvokeMember('Name','GetProperty',$null,$_,$null) } catch { 'Unknown' }
+                }
+                $out['LocalAdmins']     = $members
+                $out['LocalAdminCount'] = $members.Count
             } catch {
                 $out['LocalAdmins']     = @()
                 $out['LocalAdminCount'] = 0
             }
 
             # ── Audit Policy ──────────────────────────────────────
+            # Only check Logon/Logoff subcategory — /category:* fetches everything
+            # and is significantly slower
             try {
-                $auditResult = auditpol /get /category:* /r 2>$null
+                $auditResult = auditpol /get /subcategory:"Logon","Logoff","Account Logon" /r 2>$null
                 $out['AuditPolicRaw'] = $auditResult
                 $hasLogon = $auditResult | Where-Object { $_ -match 'Logon' -and ($_ -match 'Success' -or $_ -match 'Failure') }
                 $out['AuditLogonConfigured'] = ($null -ne $hasLogon)
@@ -148,6 +172,7 @@
 
             $out
         }
+        $results = if ($LocalScan) { & $collectBlock } else { Invoke-Command @psParams -ScriptBlock $collectBlock }
 
         $secInfo = $results
 
@@ -245,8 +270,7 @@
 
         # SMBv1
         $smbEnabled = $false
-        if ($results.SMBv1Feature -eq 'Enabled') { $smbEnabled = $true }
-        if ($null -ne $results.SMBv1Reg -and $results.SMBv1Reg -eq 1) { $smbEnabled = $true }
+        if ($null -ne $results.SMBv1Enabled) { $smbEnabled = [bool]$results.SMBv1Enabled }
 
         if ($smbEnabled) {
             $findings.Add([PSCustomObject]@{

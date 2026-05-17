@@ -128,7 +128,7 @@
             if ($Credential) { $psParams['Credential'] = $Credential }
         }
 
-        $shares = Invoke-Command @psParams -ScriptBlock {
+        $sharesBlock = {
             Get-SmbShare -ErrorAction SilentlyContinue |
             Where-Object { $_.ShareType -eq 'FileSystemDirectory' -and $_.Name -notmatch '^\w\$$' -and $_.Name -ne 'IPC$' } |
             ForEach-Object {
@@ -151,6 +151,7 @@
                 }
             }
         }
+        $shares = if ($LocalScan) { & $sharesBlock } else { Invoke-Command @psParams -ScriptBlock $sharesBlock }
 
         $shareCritPct = $Config.Thresholds.Storage.ShareUsageCriticalPct
         $shareWarnPct = $Config.Thresholds.Storage.ShareUsageWarningPct

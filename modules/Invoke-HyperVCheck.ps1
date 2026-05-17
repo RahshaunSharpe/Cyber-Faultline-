@@ -17,20 +17,21 @@ function Invoke-HyperVCheck {
 
     # ── Detect Hyper-V Role ────────────────────────────────────────
     try {
-        $hvDetect = Invoke-Command @psParams -ScriptBlock {
+        $hvDetectBlock = {
             $out = @{ IsHyperVHost = $false }
 
-            # Method 1: Windows Feature (Server with RSAT)
+            # Method 1: VMMS service check — fast and reliable, no DISM required
+            # Get-WindowsFeature uses DISM and can block for 60+ seconds — skipped
             try {
-                $feat = Get-WindowsFeature -Name Hyper-V -ErrorAction SilentlyContinue
-                if ($feat -and $feat.InstallState -eq 'Installed') {
+                $vmms = Get-Service -Name 'vmms' -ErrorAction SilentlyContinue
+                if ($vmms -and $vmms.Status -eq 'Running') {
                     $out.IsHyperVHost    = $true
                     $out.HyperVInstalled = $true
-                    $out.DetectionMethod = 'WindowsFeature'
+                    $out.DetectionMethod = 'VMMSService'
                 }
             } catch {}
 
-            # Method 2: WMI namespace check (works when RSAT not available)
+            # Method 2: CIM namespace check (fallback if VMMS check inconclusive)
             if (-not $out.IsHyperVHost) {
                 try {
                     $vmms = Get-Service -Name 'vmms' -ErrorAction SilentlyContinue
@@ -56,6 +57,7 @@ function Invoke-HyperVCheck {
 
             $out
         }
+        $hvDetect = if ($LocalScan) { & $hvDetectBlock } else { Invoke-Command @psParams -ScriptBlock $hvDetectBlock }
 
         $hvInfo.IsHyperVHost = $hvDetect.IsHyperVHost
 
@@ -79,7 +81,7 @@ function Invoke-HyperVCheck {
 
     # ── Full Hyper-V Assessment ────────────────────────────────────
     try {
-        $hvData = Invoke-Command @psParams -ScriptBlock {
+        $hvDataBlock = {
             $out = @{
                 VMList            = @()
                 VirtualSwitches   = @()
@@ -202,6 +204,7 @@ function Invoke-HyperVCheck {
 
             $out
         }
+        $hvData = if ($LocalScan) { & $hvDataBlock } else { Invoke-Command @psParams -ScriptBlock $hvDataBlock }
 
         # Merge into hvInfo
         foreach ($key in $hvData.Keys) {

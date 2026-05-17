@@ -18,7 +18,7 @@
 
     # ── Is it even joined to a domain? ────────────────────────────
     try {
-        $csResult = Invoke-Command @psParams -ScriptBlock {
+        $csBlock = {
             $cs = Get-WmiObject Win32_ComputerSystem -ErrorAction SilentlyContinue
             [PSCustomObject]@{
                 DomainRole     = $cs.DomainRole
@@ -26,6 +26,7 @@
                 PartOfDomain   = $cs.PartOfDomain
             }
         }
+        $csResult = if ($LocalScan) { & $csBlock } else { Invoke-Command @psParams -ScriptBlock $csBlock }
 
         $adInfo['DomainRole']   = $csResult.DomainRole
         $adInfo['Domain']       = $csResult.Domain
@@ -47,10 +48,11 @@
             # Check if this is a Hyper-V host - standalone is expected and by design
             $isHyperVHost = $false
             try {
-                $hvCheck = Invoke-Command @psParams -ScriptBlock {
+                $hvBlock = {
                     $svc = Get-Service -Name 'vmms' -ErrorAction SilentlyContinue
                     $svc -and $svc.Status -eq 'Running'
-                } -ErrorAction SilentlyContinue
+                }
+                $hvCheck = if ($LocalScan) { & $hvBlock } else { Invoke-Command @psParams -ScriptBlock $hvBlock -ErrorAction SilentlyContinue }
                 $isHyperVHost = ($hvCheck -eq $true)
             } catch {}
 
@@ -109,7 +111,7 @@
     # ── DC-Specific Checks ─────────────────────────────────────────
     if ($IsDomainController) {
         try {
-            $dcResults = Invoke-Command @psParams -ScriptBlock {
+            $dcBlock = {
 
                 $out = @{}
 
@@ -202,6 +204,7 @@
 
                 $out
             }
+            $dcResults = if ($LocalScan) { & $dcBlock } else { Invoke-Command @psParams -ScriptBlock $dcBlock }
 
             $adInfo = $adInfo + $dcResults
 

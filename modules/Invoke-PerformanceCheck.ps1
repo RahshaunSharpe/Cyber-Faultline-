@@ -16,7 +16,7 @@
     }
 
     try {
-        $results = Invoke-Command @psParams -ScriptBlock {
+        $collectBlock = {
 
             $out = @{}
 
@@ -98,21 +98,28 @@
             } catch {}
 
             # ── Event Log Errors (last 24h) ────────────────────────
+            # Capped at 500 events per log — Get-EventLog with no cap scans
+            # the entire log and hangs on busy DCs with thousands of entries
             try {
-                $since        = (Get-Date).AddHours(-24)
-                $sysErrors    = (Get-EventLog -LogName System      -EntryType Error   -After $since -ErrorAction SilentlyContinue | Measure-Object).Count
-                $appErrors    = (Get-EventLog -LogName Application -EntryType Error   -After $since -ErrorAction SilentlyContinue | Measure-Object).Count
-                $sysCritical  = (Get-EventLog -LogName System      -EntryType Error   -After $since -ErrorAction SilentlyContinue |
-                                 Where-Object { $_.EventID -in @(41,6008,7022,7023,7024,7026,7034,7043) } | Measure-Object).Count
-                $out['SystemErrors24h']      = $sysErrors
-                $out['AppErrors24h']         = $appErrors
-                $out['CriticalEventCount']   = $sysCritical
+                $since       = (Get-Date).AddHours(-24)
+                $criticalIds = @(41,6008,7022,7023,7024,7026,7034,7043)
+
+                $sysEvts  = Get-WinEvent -FilterHashtable @{ LogName='System';      Level=2; StartTime=$since } -MaxEvents 500 -ErrorAction SilentlyContinue
+                $appEvts  = Get-WinEvent -FilterHashtable @{ LogName='Application'; Level=2; StartTime=$since } -MaxEvents 500 -ErrorAction SilentlyContinue
+
+                $out['SystemErrors24h']    = if ($sysEvts) { $sysEvts.Count } else { 0 }
+                $out['AppErrors24h']       = if ($appEvts) { $appEvts.Count } else { 0 }
+                $out['CriticalEventCount'] = if ($sysEvts) { ($sysEvts | Where-Object { $_.Id -in $criticalIds } | Measure-Object).Count } else { 0 }
             } catch {
-                $out['EventLogError'] = $_.Exception.Message
+                $out['SystemErrors24h']    = 0
+                $out['AppErrors24h']       = 0
+                $out['CriticalEventCount'] = 0
+                $out['EventLogError']      = $_.Exception.Message
             }
 
             $out
         }
+        $results = if ($LocalScan) { & $collectBlock } else { Invoke-Command @psParams -ScriptBlock $collectBlock }
 
         $perfInfo = $results
 
