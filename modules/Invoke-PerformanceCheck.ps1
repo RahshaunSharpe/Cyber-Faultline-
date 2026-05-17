@@ -97,6 +97,23 @@
                 $out['PendingReboot'] = $pendingReboot
             } catch {}
 
+            # ── NTP / Time Synchronization ─────────────────────────
+            try {
+                $w32tmOut   = w32tm /query /status 2>$null
+                $srcLine    = $w32tmOut | Where-Object { $_ -match '^Source\s*:' }        | Select-Object -First 1
+                $offsetLine = $w32tmOut | Where-Object { $_ -match 'Phase Offset\s*:' }   | Select-Object -First 1
+                $ntpSource  = if ($srcLine)    { ($srcLine    -split ':',2)[1].Trim() } else { $null }
+                $ntpOffset  = $null
+                if ($offsetLine -match '([+-]?\d+\.?\d*)s') {
+                    $ntpOffset = [math]::Abs([double]$matches[1])
+                }
+                $out['NTPSource']        = $ntpSource
+                $out['NTPOffsetSeconds'] = $ntpOffset
+                $out['NTPSyncBroken']    = ($ntpSource -and ($ntpSource -match 'Local CMOS|Free-running|VM IC'))
+            } catch {
+                $out['NTPSource'] = $null
+            }
+
             # ── Event Log Errors (last 24h) ────────────────────────
             # Capped at 500 events per log — Get-EventLog with no cap scans
             # the entire log and hangs on busy DCs with thousands of entries
@@ -276,6 +293,46 @@
                 Recommendation = 'Investigate top error sources in Event Viewer. Filter by error level and source to identify recurring issues.'
                 Reference      = ''
             })
+        }
+
+        # ── NTP Time Sync ─────────────────────────────────────────
+        if ($results.NTPSource) {
+            if ($results.NTPSyncBroken -eq $true) {
+                $findings.Add([PSCustomObject]@{
+                    Category       = 'Performance'
+                    Check          = 'NTP Time Synchronization'
+                    Status         = 'FAIL'
+                    Severity       = 'High'
+                    Description    = "Time synchronization BROKEN — server is using local clock ($($results.NTPSource))"
+                    Details        = 'A server not synchronized to an external time source will drift from domain time. Kerberos authentication breaks when clock skew exceeds 5 minutes, causing ALL domain logins to fail.'
+                    Recommendation = "Fix NTP: w32tm /config /manualpeerlist:'time.windows.com' /syncfromflags:manual /reliable:YES /update; Restart-Service W32Time; w32tm /resync /force"
+                    Reference      = 'Microsoft KB816042 | CIS Control 8.4'
+                })
+            }
+            elseif ($null -ne $results.NTPOffsetSeconds -and $results.NTPOffsetSeconds -gt 60) {
+                $findings.Add([PSCustomObject]@{
+                    Category       = 'Performance'
+                    Check          = 'NTP Time Synchronization'
+                    Status         = 'WARN'
+                    Severity       = 'Medium'
+                    Description    = "Time offset is $([math]::Round($results.NTPOffsetSeconds,1))s — elevated (Kerberos limit is 300s)"
+                    Details        = "NTP source: $($results.NTPSource). Current drift is elevated. Kerberos auth will break if offset reaches 300 seconds (5 minutes)."
+                    Recommendation = 'Force resync: w32tm /resync /force. Investigate why drift is elevated. Verify NTP source reachability and Windows Time service health.'
+                    Reference      = ''
+                })
+            }
+            else {
+                $findings.Add([PSCustomObject]@{
+                    Category       = 'Performance'
+                    Check          = 'NTP Time Synchronization'
+                    Status         = 'PASS'
+                    Severity       = 'Info'
+                    Description    = "Time synchronization healthy — source: $($results.NTPSource)"
+                    Details        = if ($null -ne $results.NTPOffsetSeconds) { "Current offset: $([math]::Round($results.NTPOffsetSeconds,4))s" } else { 'Time sync is active.' }
+                    Recommendation = 'No action required. Ensure NTP source remains authoritative and reachable.'
+                    Reference      = ''
+                })
+            }
         }
 
     }

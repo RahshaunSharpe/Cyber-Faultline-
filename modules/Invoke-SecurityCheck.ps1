@@ -29,6 +29,44 @@
                 $out['FirewallError']    = $_.Exception.Message
             }
 
+            # ── Third-Party AV Detection ───────────────────────────
+            # Check for known third-party AV/EDR services before evaluating Defender.
+            # If one is running, Defender being disabled/passive is correct behavior.
+            try {
+                $knownAVServices = [ordered]@{
+                    'ntrtscan'         = 'Trend Micro'
+                    'tmlisten'         = 'Trend Micro'
+                    'tmccsf'           = 'Trend Micro'
+                    'TMBMSRV'          = 'Trend Micro'
+                    'TmPfw'            = 'Trend Micro'
+                    'CSFalconService'  = 'CrowdStrike Falcon'
+                    'CbDefense'        = 'VMware Carbon Black'
+                    'SentinelAgent'    = 'SentinelOne'
+                    'SAVService'       = 'Sophos'
+                    'SepMasterService' = 'Symantec Endpoint Protection'
+                    'McShield'         = 'McAfee/Trellix'
+                    'masvc'            = 'McAfee/Trellix'
+                    'ekrn'             = 'ESET'
+                    'AVP'              = 'Kaspersky'
+                    'MBAMService'      = 'Malwarebytes'
+                    'CylanceSvc'       = 'Cylance'
+                    'bdservicehost'    = 'Bitdefender'
+                    'WRSA'             = 'Webroot'
+                    'SophosNtpService' = 'Sophos'
+                }
+                $detectedAV = $null
+                foreach ($svcName in $knownAVServices.Keys) {
+                    $svc = Get-Service -Name $svcName -ErrorAction SilentlyContinue
+                    if ($svc -and $svc.Status -eq 'Running') {
+                        $detectedAV = $knownAVServices[$svcName]
+                        break
+                    }
+                }
+                $out['ThirdPartyAV'] = $detectedAV
+            } catch {
+                $out['ThirdPartyAV'] = $null
+            }
+
             # ── Windows Defender / AV ──────────────────────────────
             # Get-MpComputerStatus throws 0x80070002 when a third-party AV has
             # replaced Defender — run in a job with a hard timeout so it never hangs
@@ -45,7 +83,7 @@
                         AntivirusSignatureAge, AntispywareSignatureAge, QuickScanAge, FullScanAge,
                         AMRunningMode, AMProductVersion
                 } else { $null }
-                $out['AVError'] = if (-not $av) { 'Defender WMI provider unavailable - third-party AV may be active' } else { $null }
+                $out['AVError'] = if (-not $av) { 'Defender WMI provider unavailable' } else { $null }
             } catch {
                 $out['DefenderStatus'] = $null
                 $out['AVError']        = $_.Exception.Message
@@ -170,6 +208,50 @@
                 $out['NetAccountsOutput'] = $secPol
             } catch {}
 
+            # ── Print Spooler (PrintNightmare) ────────────────────
+            try {
+                $spooler = Get-Service -Name 'Spooler' -ErrorAction SilentlyContinue
+                $out['PrintSpoolerRunning'] = ($spooler -and $spooler.Status -eq 'Running')
+            } catch {
+                $out['PrintSpoolerRunning'] = $false
+            }
+
+            # ── Backup Agent Detection ────────────────────────────
+            try {
+                $knownBackupServices = [ordered]@{
+                    'VeeamBackupSvc'          = 'Veeam Backup & Replication'
+                    'VeeamAgentSvc'           = 'Veeam Agent'
+                    'OBEngine'                = 'Azure Backup (MARS Agent)'
+                    'WindowsAzureGuestAgent'  = 'Azure VM Agent'
+                    'WBENGINE'                = 'Windows Server Backup'
+                    'BackupExecAgentAccelerator' = 'Veritas Backup Exec'
+                    'BackupExecJobEngine'      = 'Veritas Backup Exec'
+                    'GxCVD'                   = 'Commvault'
+                    'DPMRA'                   = 'Microsoft DPM Agent'
+                    'stc_raw_agent'           = 'Carbonite/OpenText'
+                    'ArcserveUDP'             = 'Arcserve UDP'
+                    'CagService'              = 'Arcserve'
+                }
+                $detectedBackup = $null
+                foreach ($svcName in $knownBackupServices.Keys) {
+                    $svc = Get-Service -Name $svcName -ErrorAction SilentlyContinue
+                    if ($svc -and $svc.Status -eq 'Running') {
+                        $detectedBackup = $knownBackupServices[$svcName]
+                        break
+                    }
+                }
+                # Fallback: check if wbadmin has backup history (Windows Server Backup)
+                if (-not $detectedBackup) {
+                    $wbResult = wbadmin get versions 2>$null
+                    if ($wbResult -and ($wbResult | Where-Object { $_ -match 'Backup time' })) {
+                        $detectedBackup = 'Windows Server Backup'
+                    }
+                }
+                $out['BackupAgent'] = $detectedBackup
+            } catch {
+                $out['BackupAgent'] = $null
+            }
+
             $out
         }
         $results = if ($LocalScan) { & $collectBlock } else { Invoke-Command @psParams -ScriptBlock $collectBlock }
@@ -223,33 +305,52 @@
         }
 
         # Antivirus / Defender
-        if ($results.DefenderStatus) {
-            $av = $results.DefenderStatus
+        # Logic: third-party AV running OR Defender in passive mode = protected. Defender
+        # passive mode is the correct state when a third-party AV is managing the endpoint.
+        $thirdPartyAV = $results.ThirdPartyAV
+        $av           = $results.DefenderStatus
+        $defenderMode = if ($av) { $av.AMRunningMode } else { $null }
+        $defenderPassive = $defenderMode -and ($defenderMode -match 'Passive|EDR Block')
+
+        if ($thirdPartyAV -or $defenderPassive) {
+            $avName = if ($thirdPartyAV) { $thirdPartyAV } else { "third-party AV (Defender in $defenderMode)" }
+            $findings.Add([PSCustomObject]@{
+                Category       = 'Security'
+                Check          = 'Antivirus Protection'
+                Status         = 'PASS'
+                Severity       = 'Info'
+                Description    = "$avName is active as the primary antivirus/EDR solution"
+                Details        = "Windows Defender is passive/disabled — the correct state when a third-party security product manages endpoint protection."
+                Recommendation = "Verify $avName definitions are current and real-time protection is enabled via its management console. Confirm policy is centrally managed."
+                Reference      = 'CIS Control 10: Malware Defenses'
+            })
+        }
+        elseif ($av) {
+            # Defender is the only AV on this server — check its health
             if (-not $av.AntivirusEnabled -or -not $av.RealTimeProtectionEnabled) {
                 $findings.Add([PSCustomObject]@{
                     Category       = 'Security'
                     Check          = 'Antivirus Protection'
                     Status         = 'FAIL'
                     Severity       = 'Critical'
-                    Description    = 'Windows Defender antivirus or real-time protection is DISABLED'
+                    Description    = 'NO antivirus protection detected — Defender is disabled and no third-party AV is running'
                     Details        = "AntivirusEnabled=$($av.AntivirusEnabled), RealTimeProtection=$($av.RealTimeProtectionEnabled). Unprotected servers are primary ransomware and malware targets."
-                    Recommendation = 'Enable Windows Defender or install and configure an enterprise EDR solution (e.g., Microsoft Defender for Endpoint, CrowdStrike, SentinelOne).'
+                    Recommendation = 'Enable Windows Defender immediately or deploy an enterprise EDR solution (CrowdStrike, SentinelOne, Defender for Endpoint).'
                     Reference      = 'CIS Control 10: Malware Defenses'
                 })
             }
             else {
-                $sigAge = $av.AntivirusSignatureAge
+                $sigAge  = $av.AntivirusSignatureAge
                 $scanAge = $av.QuickScanAge
-
                 if ($sigAge -gt 3) {
                     $findings.Add([PSCustomObject]@{
                         Category       = 'Security'
                         Check          = 'AV Signature Age'
                         Status         = 'FAIL'
                         Severity       = 'High'
-                        Description    = "Antivirus signatures are $sigAge day(s) old  - outdated"
+                        Description    = "Windows Defender signatures are $sigAge day(s) old — outdated"
                         Details        = "Signatures older than 3 days cannot detect recently emerged malware and ransomware variants."
-                        Recommendation = 'Verify Windows Update / WSUS connectivity. Force signature update: Update-MpSignature. Check SCCM/Defender for Endpoint deployment health.'
+                        Recommendation = 'Verify Windows Update / WSUS connectivity. Force update: Update-MpSignature. Check SCCM/Defender for Endpoint deployment health.'
                         Reference      = 'CIS Control 10.2'
                     })
                 }
@@ -266,6 +367,19 @@
                     })
                 }
             }
+        }
+        else {
+            # Could not determine AV status at all
+            $findings.Add([PSCustomObject]@{
+                Category       = 'Security'
+                Check          = 'Antivirus Protection'
+                Status         = 'WARN'
+                Severity       = 'Medium'
+                Description    = 'Antivirus status could not be determined'
+                Details        = "Windows Defender WMI provider is unavailable and no known third-party AV service was detected. $($results.AVError)"
+                Recommendation = 'Manually verify antivirus protection via the management console. Confirm the AV agent is running and reporting to its central management platform.'
+                Reference      = 'CIS Control 10: Malware Defenses'
+            })
         }
 
         # SMBv1
@@ -465,6 +579,46 @@
                 Details        = 'AutoRun can automatically execute malicious code from removable media (USB, CD).'
                 Recommendation = 'Disable AutoRun via GPO: Computer Configuration > Administrative Templates > Windows Components > AutoPlay Policies > Turn off Autoplay = Enabled for All Drives.'
                 Reference      = 'CIS Control 10.3'
+            })
+        }
+
+        # Print Spooler — PrintNightmare (CVE-2021-34527)
+        if ($results.PrintSpoolerRunning -eq $true) {
+            $findings.Add([PSCustomObject]@{
+                Category       = 'Security'
+                Check          = 'Print Spooler Service'
+                Status         = 'WARN'
+                Severity       = 'High'
+                Description    = 'Print Spooler service is running on a non-print server (PrintNightmare risk)'
+                Details        = 'CVE-2021-34527 (PrintNightmare) allows local privilege escalation and remote code execution via the Print Spooler service. Unless this is a dedicated print server, there is no reason to run it.'
+                Recommendation = 'Disable Print Spooler on all non-print servers: Stop-Service Spooler -Force; Set-Service Spooler -StartupType Disabled. If printing is required, use a dedicated print server tier.'
+                Reference      = 'CVE-2021-34527 | MS-MSRC July 2021 | CIS Control 4.8'
+            })
+        }
+
+        # Backup Detection
+        if ($results.BackupAgent) {
+            $findings.Add([PSCustomObject]@{
+                Category       = 'Security'
+                Check          = 'Backup Solution'
+                Status         = 'PASS'
+                Severity       = 'Info'
+                Description    = "$($results.BackupAgent) backup agent detected and running"
+                Details        = 'A backup agent is active. Verify jobs are completing successfully and test restoration procedures regularly.'
+                Recommendation = 'Confirm last successful backup in the backup console. Test recovery quarterly. Ensure at least one backup copy is stored off-site or in immutable cloud storage (protects against ransomware).'
+                Reference      = 'NIST SP 800-53: CP-9 | CIS Control 11: Data Recovery'
+            })
+        }
+        else {
+            $findings.Add([PSCustomObject]@{
+                Category       = 'Security'
+                Check          = 'Backup Solution'
+                Status         = 'FAIL'
+                Severity       = 'Critical'
+                Description    = 'NO backup agent detected on this server'
+                Details        = 'No recognized backup service is running. This server has no verified backup coverage. A ransomware attack, hardware failure, or accidental deletion would result in unrecoverable data loss.'
+                Recommendation = 'Deploy a backup solution immediately: Azure Backup (MARS agent), Veeam, Windows Server Backup, or equivalent. Implement the 3-2-1 rule: 3 copies, 2 media types, 1 off-site. Use immutable storage to protect against ransomware.'
+                Reference      = 'NIST SP 800-53: CP-9 | CIS Control 11: Data Recovery'
             })
         }
 

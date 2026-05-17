@@ -18,10 +18,22 @@ function Invoke-OSCheck {
     try {
         $os      = Get-CimInstance -ClassName Win32_OperatingSystem @cimParams
         $cs      = Get-CimInstance -ClassName Win32_ComputerSystem  @cimParams
-        # Win32_QuickFixEngineering is extremely slow — use WU COM object instead (instant)
+        # Win32_QuickFixEngineering is extremely slow — use WU COM object instead (instant).
+        # Also query for pending (not yet installed) updates — more meaningful than installed count.
+        $hotfixCount    = 0
+        $pendingUpdates = -1
+        $criticalPending = 0
         try {
-            $wuSession   = New-Object -ComObject Microsoft.Update.Session -ErrorAction Stop
-            $hotfixCount = $wuSession.CreateUpdateSearcher().GetTotalHistoryCount()
+            $wuSession  = New-Object -ComObject Microsoft.Update.Session -ErrorAction Stop
+            $wuSearcher = $wuSession.CreateUpdateSearcher()
+            $hotfixCount = $wuSearcher.GetTotalHistoryCount()
+            try {
+                $pendingResult   = $wuSearcher.Search("IsInstalled=0 and IsHidden=0 and Type='Software'")
+                $pendingUpdates  = $pendingResult.Updates.Count
+                $criticalPending = ($pendingResult.Updates | Where-Object { $_.MsrcSeverity -eq 'Critical' } | Measure-Object).Count
+            } catch {
+                $pendingUpdates = -1
+            }
         } catch {
             $hotfixCount = 0
         }
@@ -40,8 +52,10 @@ function Invoke-OSCheck {
             InstallDate     = $installDate
             LastBootTime    = $lastBoot
             UptimeDays      = $uptimeDays
-            TotalRAMGB      = [math]::Round($cs.TotalPhysicalMemory / 1GB, 2)
-            HotfixCount     = $hotfixCount
+            TotalRAMGB       = [math]::Round($cs.TotalPhysicalMemory / 1GB, 2)
+            HotfixCount      = $hotfixCount
+            PendingUpdates   = $pendingUpdates
+            CriticalPending  = $criticalPending
         }
 
         # ── EOL Check ──────────────────────────────────────────────
@@ -167,29 +181,45 @@ function Invoke-OSCheck {
             })
         }
 
-        # ── Hotfix / Patch Check ───────────────────────────────────
-        if ($hotfixCount -lt 10) {
+        # ── Pending Windows Updates ────────────────────────────────
+        if ($pendingUpdates -gt 0) {
+            $critNote = if ($criticalPending -gt 0) { " — $criticalPending are CRITICAL security patches" } else { '' }
+            $sev      = if ($criticalPending -gt 0) { 'Critical' } else { 'High' }
+            $status   = if ($criticalPending -gt 0) { 'FAIL'     } else { 'WARN'  }
             $findings.Add([PSCustomObject]@{
                 Category       = 'Operating System'
-                Check          = 'Installed Hotfixes'
-                Status         = 'WARN'
-                Severity       = 'High'
-                Description    = "Only $hotfixCount hotfixes detected via WMI"
-                Details        = 'Very few patches detected. This may indicate Windows Update is not functioning or patches are long overdue.'
-                Recommendation = 'Verify Windows Update service is running. Review update history in Windows Update settings or WSUS.'
-                Reference      = 'NIST SP 800-53: SI-2 Flaw Remediation'
+                Check          = 'Windows Updates'
+                Status         = $status
+                Severity       = $sev
+                Description    = "$pendingUpdates Windows update(s) pending installation$critNote"
+                Details        = "These updates have been released but not yet applied ($hotfixCount installed in history). Unpatched systems are primary targets for ransomware and exploit kits."
+                Recommendation = 'Apply pending updates immediately via Windows Update or WSUS. Prioritize Critical and Important security patches. Schedule a maintenance window for updates requiring a reboot.'
+                Reference      = 'NIST SP 800-53: SI-2 Flaw Remediation | CIS Control 7'
+            })
+        }
+        elseif ($pendingUpdates -eq 0) {
+            $findings.Add([PSCustomObject]@{
+                Category       = 'Operating System'
+                Check          = 'Windows Updates'
+                Status         = 'PASS'
+                Severity       = 'Info'
+                Description    = "Server is fully patched — no pending updates ($hotfixCount updates in history)"
+                Details        = 'Windows Update reports no outstanding patches. Server is current.'
+                Recommendation = 'Maintain regular patching cadence. Subscribe to Microsoft Security Update notifications for proactive alerting.'
+                Reference      = ''
             })
         }
         else {
+            # pendingUpdates = -1 — WU search failed (WSUS/WU service issue or no internet)
             $findings.Add([PSCustomObject]@{
                 Category       = 'Operating System'
-                Check          = 'Installed Hotfixes'
-                Status         = 'PASS'
-                Severity       = 'Info'
-                Description    = "$hotfixCount hotfixes installed"
-                Details        = 'Patch count appears healthy. Verify against WSUS/SCCM for pending updates.'
-                Recommendation = 'Continue regular patch cycles. Validate against patch management system.'
-                Reference      = ''
+                Check          = 'Windows Updates'
+                Status         = 'WARN'
+                Severity       = 'Medium'
+                Description    = 'Could not query pending Windows updates — update service or WSUS may be unavailable'
+                Details        = "Windows Update search returned an error. History shows $hotfixCount applied updates. Pending status is unknown."
+                Recommendation = 'Verify Windows Update service is running (wuauserv). Check WSUS server connectivity if applicable. Review update history manually in Windows Update settings.'
+                Reference      = 'NIST SP 800-53: SI-2'
             })
         }
 

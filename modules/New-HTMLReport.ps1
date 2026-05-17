@@ -17,6 +17,7 @@ function New-HTMLReport {
     $medCount      = 0
     $lowCount      = 0
     $healthyCount  = 0
+    $portfolioHealthSum = 0
 
     foreach ($sr in $ServerResults) {
         $allFindings = @()
@@ -27,6 +28,19 @@ function New-HTMLReport {
         $lowCount     += ($allFindings | Where-Object { $_.Severity -eq 'Low'      -and $_.Status -ne 'PASS' } | Measure-Object).Count
         $totalFindings += $allFindings.Count
         if ($sr.OverallRisk -in 'Healthy','Low') { $healthyCount++ }
+        $portfolioHealthSum += if ($sr.HealthScore -ne $null) { $sr.HealthScore } else { 0 }
+    }
+
+    $portfolioScore = if ($totalServers -gt 0) { [math]::Round($portfolioHealthSum / $totalServers) } else { 0 }
+    $portfolioGrade = switch ($portfolioScore) {
+        { $_ -ge 90 } { 'A'; break }
+        { $_ -ge 75 } { 'B'; break }
+        { $_ -ge 60 } { 'C'; break }
+        { $_ -ge 40 } { 'D'; break }
+        default        { 'F' }
+    }
+    $portfolioGradeColor = switch ($portfolioGrade) {
+        'A' { '#16a34a' } 'B' { '#65a30d' } 'C' { '#d97706' } 'D' { '#ea580c' } default { '#dc2626' }
     }
 
     # ── Helpers ────────────────────────────────────────────────────
@@ -61,12 +75,15 @@ function New-HTMLReport {
         }
     }
 
-    function Get-ScoreColor($score) {
-        if ($score -ge 75) { return '#dc2626' }
-        elseif ($score -ge 50) { return '#ea580c' }
-        elseif ($score -ge 25) { return '#d97706' }
-        elseif ($score -ge 10) { return '#2563eb' }
-        else { return '#16a34a' }
+    function Get-GradeColor($grade) {
+        switch ($grade) {
+            'A' { return '#16a34a' }
+            'B' { return '#65a30d' }
+            'C' { return '#d97706' }
+            'D' { return '#ea580c' }
+            'F' { return '#dc2626' }
+            default { return '#94a3b8' }
+        }
     }
 
     function Escape-Html($str) {
@@ -94,8 +111,10 @@ function New-HTMLReport {
         $sLow  = ($allFindings | Where-Object { $_.Severity -eq 'Low'      -and $_.Status -ne 'PASS' } | Measure-Object).Count
         $sPass = ($allFindings | Where-Object { $_.Status -eq 'PASS' }       | Measure-Object).Count
 
-        $scoreColor = Get-ScoreColor $sr.RiskScore
-        $riskBadge  = Get-RiskBadge  $sr.OverallRisk
+        $gradeColor  = Get-GradeColor $sr.HealthGrade
+        $healthGrade = if ($sr.HealthGrade) { $sr.HealthGrade } else { 'F' }
+        $healthScore = if ($sr.HealthScore -ne $null) { $sr.HealthScore } else { 0 }
+        $riskBadge   = Get-RiskBadge $sr.OverallRisk
 
         $osModule  = $sr.Modules | Where-Object { $_.ModuleName -eq 'OSCheck' }             | Select-Object -First 1
         $hwModule  = $sr.Modules | Where-Object { $_.ModuleName -eq 'HardwareCheck' }       | Select-Object -First 1
@@ -330,9 +349,9 @@ function New-HTMLReport {
                 <div class="server-header-right">
                     $riskBadge
                     <div class="sev-pills-group">$pillsHTML</div>
-                    <div class="risk-score-circle" style="border-color:$scoreColor;color:$scoreColor;">
-                        <span class="score-number">$($sr.RiskScore)</span>
-                        <span class="score-label">Risk</span>
+                    <div class="health-grade-circle" style="border-color:$gradeColor;color:$gradeColor;" title="Health Score: $healthScore / 100">
+                        <span class="grade-letter">$healthGrade</span>
+                        <span class="grade-score">$healthScore</span>
                     </div>
                     <span class="chevron" id="chevron_$sid">&#9660;</span>
                 </div>
@@ -463,10 +482,10 @@ function New-HTMLReport {
   .pill-low  { background: var(--low-bg);  color: var(--low);  border: 1px solid var(--low); }
   .pill-ok   { background: var(--ok-bg);   color: var(--ok);   border: 1px solid var(--ok); }
 
-  /* ── Risk Score Circle ── */
-  .risk-score-circle { width: 56px; height: 56px; border-radius: 50%; border: 3px solid; display: flex; flex-direction: column; align-items: center; justify-content: center; flex-shrink: 0; }
-  .score-number { font-size: 1.2rem; font-weight: 800; line-height: 1; }
-  .score-label  { font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
+  /* ── Health Grade Circle ── */
+  .health-grade-circle { width: 58px; height: 58px; border-radius: 50%; border: 3px solid; display: flex; flex-direction: column; align-items: center; justify-content: center; flex-shrink: 0; cursor: default; }
+  .grade-letter { font-size: 1.5rem; font-weight: 900; line-height: 1; }
+  .grade-score  { font-size: 0.6rem; color: var(--text-muted); margin-top: 1px; }
 
   /* ── Risk Badges ── */
   .risk-badge { padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; }
@@ -635,6 +654,11 @@ function New-HTMLReport {
   <!-- Executive Summary -->
   <div class="section-heading">&#128202; Executive Summary</div>
   <div class="summary-grid">
+    <div class="summary-card card-grade" style="border-top: 3px solid $portfolioGradeColor">
+      <div class="num" style="color:$portfolioGradeColor">$portfolioGrade</div>
+      <div class="lbl">Portfolio Grade</div>
+      <div style="color:var(--text-muted);font-size:0.72rem;margin-top:4px">avg $portfolioScore / 100</div>
+    </div>
     <div class="summary-card card-total"><div class="num">$totalServers</div><div class="lbl">Servers Scanned</div></div>
     <div class="summary-card card-crit"> <div class="num">$critCount</div>  <div class="lbl">Critical Findings</div></div>
     <div class="summary-card card-high"> <div class="num">$highCount</div>  <div class="lbl">High Findings</div></div>
