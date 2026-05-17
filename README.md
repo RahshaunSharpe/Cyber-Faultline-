@@ -17,7 +17,8 @@ Scans your Windows servers and produces a single HTML report that tells you:
 
 Best Case Scenario 
 You run it from **one machine**. It reaches out to all your servers remotely. You never should have log into the servers themselves.
-However I understand Win-rm and other issues. So you may need log on and run a local Invocation of the script and it will be fine. 
+
+ **However I understand Win-rm and other issues. So you CAN log on and run a local Invocation of the script and it will be fine.**
 
 ---
 
@@ -68,7 +69,7 @@ cd "C:\users\User\Downloads\CyberFaultline"
 
 ---
 
-### Scenario 1 — Scan a Single Server
+### Scenario 1 — Scan a Single Server (Local and remote) - 
 
 ```powershell
 .\Invoke-EnterpriseAssessment.ps1 -ComputerName "DC01" -OpenReport
