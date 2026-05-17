@@ -40,10 +40,24 @@ You run it from **one machine**. It reaches out to all your servers remotely. Yo
 You only do this once per server. Either log in directly or use an existing RDP session.
 
 **On domain-joined servers (DCs, file servers, member servers):**
+
+
 ```powershell
 Enable-PSRemoting -Force
 ```
 > Many domains already have this enabled via Group Policy. Try scanning first — if it works, you don't need to do anything.
+
+
+##Your security concern is correct by the way.
+**Enabling WinRM wide open on a DC is not ideal. But there's a middle ground — you can enable it and lock it down to only accept connections from one specific IP (your scanner machine):**
+```Optional Powershell
+# Run on the DC — enables WinRM but restricts it to your scanner machine only
+Enable-PSRemoting -Force
+netsh advfirewall firewall add rule name="WinRM-Restricted" protocol=TCP dir=in localport=5985 action=allow remoteip=192.168.1.50
+netsh advfirewall firewall add rule name="WinRM-Block-All" protocol=TCP dir=in localport=5985 action=block
+
+```
+
 
 **On your Hyper-V host (workgroup/standalone):**
 ```powershell
@@ -76,6 +90,17 @@ cd "C:\users\User\Downloads\CyberFaultline"
 ```
 
 The report opens automatically in your browser when done.
+
+---
+
+### Scenario 1.5 — Scan the Machine You Are Sitting On (No WinRM Needed)
+  If you are logged into the server directly (DC, file server, member server), run this instead of enabling WinRM:
+
+```powershell
+.\Invoke-EnterpriseAssessment.ps1 -LocalScan -OpenReport
+```
+No credentials needed. No WinRM. No firewall changes. It runs all checks directly using your current login session.
+This is the recommended way to scan domain servers when you have direct access — safer than enabling WinRM on every machine.
 
 ---
 
