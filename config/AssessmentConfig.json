@@ -1,0 +1,235 @@
+{
+  "Assessment": {
+    "Version": "2.0.0",
+    "Name": "Enterprise Server Assessment Tool",
+    "DefaultTimeoutSeconds": 45,
+    "MaxParallelScans": 10,
+    "OutputPath": ".\\Reports",
+    "LogPath": ".\\Reports\\Logs",
+    "ReportTitle": "Enterprise Infrastructure Assessment Report"
+  },
+
+  "Thresholds": {
+    "Storage": {
+      "DiskUsageWarningPct": 70,
+      "DiskUsageHighPct": 85,
+      "DiskUsageCriticalPct": 90,
+      "ShareUsageWarningPct": 75,
+      "ShareUsageCriticalPct": 90,
+      "FreeDiskWarningGB": 20,
+      "FreeDiskCriticalGB": 5
+    },
+    "Memory": {
+      "UsageWarningPct": 80,
+      "UsageCriticalPct": 90
+    },
+    "CPU": {
+      "UsageWarningPct": 75,
+      "UsageCriticalPct": 90
+    },
+    "Uptime": {
+      "RebootRecommendedDays": 30,
+      "RebootCriticalDays": 90
+    },
+    "Hardware": {
+      "AgeWarningYears": 5,
+      "AgeCriticalYears": 7,
+      "EndOfLifeYears": 8
+    },
+    "Updates": {
+      "PendingWarning": 5,
+      "PendingCritical": 20
+    },
+    "Accounts": {
+      "InactiveUserDays": 90,
+      "InactiveComputerDays": 90,
+      "PasswordAgeDaysWarning": 90,
+      "PasswordNeverExpiresFlag": true
+    }
+  },
+
+  "WindowsServerEOL": {
+    "Windows Server 2003": {
+      "EOLDate": "2015-07-14",
+      "ExtendedDate": null,
+      "Replacement": "Windows Server 2022 or 2025",
+      "SupportStatus": "END_OF_LIFE"
+    },
+    "Windows Server 2008": {
+      "EOLDate": "2020-01-14",
+      "ExtendedDate": "2024-01-09",
+      "Replacement": "Windows Server 2022 or 2025",
+      "SupportStatus": "END_OF_LIFE"
+    },
+    "Windows Server 2008 R2": {
+      "EOLDate": "2020-01-14",
+      "ExtendedDate": "2024-01-09",
+      "Replacement": "Windows Server 2022 or 2025",
+      "SupportStatus": "END_OF_LIFE"
+    },
+    "Windows Server 2012": {
+      "EOLDate": "2023-10-10",
+      "ExtendedDate": "2026-10-13",
+      "Replacement": "Windows Server 2022 or 2025",
+      "SupportStatus": "END_OF_LIFE"
+    },
+    "Windows Server 2012 R2": {
+      "EOLDate": "2023-10-10",
+      "ExtendedDate": "2026-10-13",
+      "Replacement": "Windows Server 2022 or 2025",
+      "SupportStatus": "END_OF_LIFE"
+    },
+    "Windows Server 2016": {
+      "EOLDate": "2027-01-12",
+      "ExtendedDate": "2027-01-12",
+      "Replacement": "Windows Server 2025",
+      "SupportStatus": "SUPPORTED"
+    },
+    "Windows Server 2019": {
+      "EOLDate": "2029-01-09",
+      "ExtendedDate": "2029-01-09",
+      "Replacement": "Windows Server 2025",
+      "SupportStatus": "SUPPORTED"
+    },
+    "Windows Server 2022": {
+      "EOLDate": "2031-10-14",
+      "ExtendedDate": "2031-10-14",
+      "Replacement": null,
+      "SupportStatus": "SUPPORTED"
+    },
+    "Windows Server 2025": {
+      "EOLDate": "2034-10-09",
+      "ExtendedDate": "2034-10-09",
+      "Replacement": null,
+      "SupportStatus": "CURRENT"
+    }
+  },
+
+  "WindowsClientEOL": {
+    "Windows 7": {
+      "EOLDate": "2020-01-14",
+      "SupportStatus": "END_OF_LIFE"
+    },
+    "Windows 8": {
+      "EOLDate": "2016-01-12",
+      "SupportStatus": "END_OF_LIFE"
+    },
+    "Windows 8.1": {
+      "EOLDate": "2023-01-10",
+      "SupportStatus": "END_OF_LIFE"
+    },
+    "Windows 10": {
+      "EOLDate": "2025-10-14",
+      "SupportStatus": "END_OF_LIFE"
+    },
+    "Windows 11": {
+      "EOLDate": "2027-10-14",
+      "SupportStatus": "SUPPORTED"
+    }
+  },
+
+  "SecurityChecks": {
+    "DangerousPorts": [
+      { "Port": 23,   "Protocol": "TCP", "Service": "Telnet",         "Severity": "Critical", "Reason": "Unencrypted remote access" },
+      { "Port": 21,   "Protocol": "TCP", "Service": "FTP",            "Severity": "High",     "Reason": "Unencrypted file transfer" },
+      { "Port": 135,  "Protocol": "TCP", "Service": "RPC",            "Severity": "Medium",   "Reason": "Attack surface if internet-facing" },
+      { "Port": 137,  "Protocol": "UDP", "Service": "NetBIOS-NS",     "Severity": "Medium",   "Reason": "Legacy protocol, NBNS spoofing risk" },
+      { "Port": 139,  "Protocol": "TCP", "Service": "NetBIOS",        "Severity": "High",     "Reason": "Legacy protocol, relay attacks" },
+      { "Port": 445,  "Protocol": "TCP", "Service": "SMB",            "Severity": "High",     "Reason": "EternalBlue if unpatched, lateral movement" },
+      { "Port": 1433, "Protocol": "TCP", "Service": "MSSQL",          "Severity": "High",     "Reason": "Database direct exposure" },
+      { "Port": 3389, "Protocol": "TCP", "Service": "RDP",            "Severity": "High",     "Reason": "Brute force target if internet-facing" },
+      { "Port": 5985, "Protocol": "TCP", "Service": "WinRM HTTP",     "Severity": "Medium",   "Reason": "Remote management exposure" },
+      { "Port": 5986, "Protocol": "TCP", "Service": "WinRM HTTPS",    "Severity": "Low",      "Reason": "Remote management, verify access control" }
+    ],
+    "DeprecatedProtocols": [
+      { "Name": "SMBv1",    "Severity": "Critical", "CVE": "CVE-2017-0144 (EternalBlue)", "Recommendation": "Disable SMBv1 immediately" },
+      { "Name": "TLS 1.0",  "Severity": "High",     "CVE": "POODLE, BEAST",               "Recommendation": "Disable TLS 1.0 and 1.1, enforce TLS 1.2+" },
+      { "Name": "TLS 1.1",  "Severity": "High",     "CVE": "POODLE, BEAST",               "Recommendation": "Disable TLS 1.0 and 1.1, enforce TLS 1.2+" },
+      { "Name": "NTLMv1",   "Severity": "High",     "CVE": "Pass-the-hash attacks",        "Recommendation": "Enforce NTLMv2 minimum, prefer Kerberos" },
+      { "Name": "WDigest",  "Severity": "Critical", "CVE": "Credential theft from LSASS",  "Recommendation": "Disable WDigest authentication" },
+      { "Name": "LLMNR",    "Severity": "High",     "CVE": "Responder LLMNR poisoning",    "Recommendation": "Disable LLMNR via GPO" },
+      { "Name": "NetBIOS",  "Severity": "Medium",   "CVE": "NBT-NS spoofing",              "Recommendation": "Disable NetBIOS over TCP/IP" }
+    ]
+  },
+
+  "CloudMigration": {
+    "Providers": ["Azure", "AWS", "Google Cloud"],
+    "ScoringWeights": {
+      "OSModern": 20,
+      "HardwareAge": 15,
+      "SecurityPosture": 20,
+      "ApplicationCompatibility": 15,
+      "NetworkReadiness": 10,
+      "PatchCompliance": 10,
+      "VirtualizationReady": 10
+    },
+    "Thresholds": {
+      "CloudReady": 75,
+      "HybridReady": 50,
+      "MigrationNeeded": 30
+    },
+    "Recommendations": {
+      "CloudReady": {
+        "Label": "Cloud Ready",
+        "Description": "This server meets criteria for direct cloud migration (lift-and-shift or modernization).",
+        "Options": ["Azure IaaS VM", "AWS EC2", "Azure PaaS (App Service, SQL MI)", "AWS RDS / Elastic Beanstalk"]
+      },
+      "HybridReady": {
+        "Label": "Hybrid Candidate",
+        "Description": "Server can participate in a hybrid architecture with Azure Arc or AWS Outposts before full migration.",
+        "Options": ["Azure Arc enrollment", "Azure Site Recovery (replication)", "AWS Outposts", "VPN/ExpressRoute hybrid"]
+      },
+      "MigrationNeeded": {
+        "Label": "Requires Upgrade Before Migration",
+        "Description": "OS or hardware must be upgraded before cloud migration is feasible.",
+        "Options": ["In-place OS upgrade", "Hardware refresh + re-assess", "Application re-platforming"]
+      }
+    },
+    "RoleCloudMap": {
+      "Domain Controller":      "Azure AD DS / Entra ID Domain Services or DC in Azure IaaS",
+      "File Server":            "Azure Files, Azure NetApp Files, AWS FSx",
+      "Web Server":             "Azure App Service, AWS Elastic Beanstalk, or IaaS VM behind Load Balancer",
+      "Database Server":        "Azure SQL Managed Instance, AWS RDS, or IaaS with premium disks",
+      "Print Server":           "Universal Print (Microsoft 365) or Azure IaaS VM",
+      "Mail Server":            "Microsoft 365 Exchange Online or AWS WorkMail",
+      "Application Server":     "Azure App Service, Azure Kubernetes Service, or AWS App Runner",
+      "Remote Desktop Server":  "Azure Virtual Desktop (AVD) or AWS WorkSpaces"
+    }
+  },
+
+  "ComplianceFrameworks": {
+    "CIS": {
+      "Name": "CIS Controls v8.1",
+      "URL": "https://www.cisecurity.org/controls/v8",
+      "KeyControls": ["Inventory & Control of Enterprise Assets", "Inventory of Software Assets", "Data Protection", "Secure Configuration", "Account Management", "Access Control Management", "Continuous Vulnerability Management", "Audit Log Management", "Email & Web Browser Protections", "Malware Defenses", "Data Recovery", "Network Infrastructure Management", "Network Monitoring", "Security Awareness Training", "Service Provider Management", "Application Software Security", "Incident Response Management", "Penetration Testing"]
+    },
+    "NIST": {
+      "Name": "NIST SP 800-53 Rev 5",
+      "URL": "https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final",
+      "KeyFamilies": ["Access Control (AC)", "Audit & Accountability (AU)", "Configuration Management (CM)", "Identification & Authentication (IA)", "Incident Response (IR)", "Maintenance (MA)", "Media Protection (MP)", "Physical & Environmental (PE)", "Risk Assessment (RA)", "System & Communications Protection (SC)", "System & Information Integrity (SI)"]
+    },
+    "DISA_STIG": {
+      "Name": "DISA Security Technical Implementation Guides",
+      "URL": "https://public.cyber.mil/stigs/",
+      "Description": "DoD mandatory configuration standards, widely adopted as industry baseline"
+    }
+  },
+
+  "RiskScoring": {
+    "FindingSeverityWeights": {
+      "Critical": 40,
+      "High": 20,
+      "Medium": 10,
+      "Low": 5,
+      "Info": 0
+    },
+    "MaxScore": 100,
+    "RiskBands": {
+      "Critical": { "Min": 75, "Max": 100, "Color": "#dc2626", "Label": "Critical Risk" },
+      "High":     { "Min": 50, "Max": 74,  "Color": "#ea580c", "Label": "High Risk" },
+      "Medium":   { "Min": 25, "Max": 49,  "Color": "#d97706", "Label": "Medium Risk" },
+      "Low":      { "Min": 10, "Max": 24,  "Color": "#2563eb", "Label": "Low Risk" },
+      "Healthy":  { "Min": 0,  "Max": 9,   "Color": "#16a34a", "Label": "Healthy" }
+    }
+  }
+}
