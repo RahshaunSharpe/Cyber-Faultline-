@@ -1,5 +1,5 @@
 # Enterprise Infrastructure Assessment Tool
-![Badge](https://hitscounter.dev/api/hit?url=https%3A%2F%2Fgithub.com%2FRahshaunSharpe%2FCyber-Faultline&label=&icon=eye&color=%23198754&message=&style=social&tz=UTC)
+![Badge](https://hitscounter.dev/api/hit?url=https%3A%2F%2Fgithub.com%2FRahshaunSharpe%2FCyber-Faultline&label=&icon=eye&color=%2320c997&message=&style=for-the-badge&tz=UTC)
 
 <img width="1734" height="811" alt="image" src="https://github.com/user-attachments/assets/c98dbed2-e2ab-4764-8209-03fe1d5105c8" />
 
