@@ -1,5 +1,6 @@
 # Enterprise Infrastructure Assessment Tool
-[![Hits](https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fgithub.com%2FRahshaunSharpe%2FCyber-Faultline&count_bg=%2379C83D&title_bg=%23555555&icon=&icon_color=%23E7E7E7&title=hits&edge_flat=false)](https://hits.seeyoufarm.com)
+![Badge](https://hitscounter.dev/api/hit?url=https%3A%2F%2Fgithub.com%2FRahshaunSharpe%2FCyber-Faultline&label=&icon=eye&color=%23198754&message=&style=social&tz=UTC)
+
 <img width="1734" height="811" alt="image" src="https://github.com/user-attachments/assets/c98dbed2-e2ab-4764-8209-03fe1d5105c8" />
 
 ### Complete Usage Guide
@@ -333,4 +334,3 @@ Go to the **Priority Remediation List** section at the top of the report. Work t
 
 *Reports are generated as self-contained HTML files. No internet connection required to view them. Safe to email or print.*
 
-<a href="https://hits.seeyoufarm.com"><img src="https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fgithub.com%2FRahshaunSharpe%2FCyber-Faultline&count_bg=%2322EC85&title_bg=%23555555&icon=&icon_color=%23E7E7E7&title=public+hits+&edge_flat=false"/></a>
